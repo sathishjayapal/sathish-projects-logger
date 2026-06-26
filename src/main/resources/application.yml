@@ -1,0 +1,58 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: sathishlogger
+  
+  datasource:
+    url: ${DATABASE_URL:jdbc:h2:mem:sathishlogger}
+    username: ${DATABASE_USERNAME:sa}
+    password: ${DATABASE_PASSWORD:}
+    driver-class-name: ${DATABASE_DRIVER:org.h2.Driver}
+  
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:create-drop}
+    show-sql: ${JPA_SHOW_SQL:false}
+    properties:
+      hibernate:
+        dialect: ${HIBERNATE_DIALECT:org.hibernate.dialect.H2Dialect}
+        format_sql: true
+  
+  h2:
+    console:
+      enabled: ${H2_CONSOLE_ENABLED:true}
+      path: /h2-console
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.sathish.sathishlogger: ${LOG_LEVEL:INFO}
+    org.springframework.web: ${SPRING_WEB_LOG_LEVEL:WARN}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%X{correlationId:-}] %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%X{correlationId:-}] %logger{36} - %msg%n"
+  file:
+    name: ${LOG_FILE_PATH:./logs/sathishlogger.log}
+
+# Custom application properties
+sathishlogger:
+  storage:
+    type: ${STORAGE_TYPE:database} # database, file, or external
+    file-path: ${STORAGE_FILE_PATH:./logs/application-logs.json}
+  security:
+    api-key-enabled: ${API_KEY_ENABLED:false}
+    api-key: ${API_KEY:}
+  retention:
+    days: ${LOG_RETENTION_DAYS:30}
+  batch:
+    max-size: ${BATCH_MAX_SIZE:100}

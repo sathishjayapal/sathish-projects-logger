@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  sathishlogger:
+    build: .
+    container_name: sathishlogger
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    environment:
+      - SERVER_PORT=8080
+      - DATABASE_URL=${DATABASE_URL:-jdbc:postgresql://postgres:8432/sathishlogger}
+      - DATABASE_USERNAME=${DATABASE_USERNAME:-sathish}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-sathish123}
+      - DATABASE_DRIVER=${DATABASE_DRIVER:-org.postgresql.Driver}
+      - HIBERNATE_DIALECT=${HIBERNATE_DIALECT:-org.hibernate.dialect.PostgreSQLDialect}
+      - JPA_DDL_AUTO=${JPA_DDL_AUTO:-update}
+      - JPA_SHOW_SQL=${JPA_SHOW_SQL:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - STORAGE_TYPE=${STORAGE_TYPE:-database}
+      - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-30}
+      - API_KEY_ENABLED=${API_KEY_ENABLED:-false}
+      - API_KEY=${API_KEY:-}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - sathishlogger-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: sathishlogger-postgres
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-sathishlogger}
+      - POSTGRES_USER=${DATABASE_USERNAME:-sathish}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD:-sathish123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "${POSTGRES_PORT:-8432}:8432"
+    restart: unless-stopped
+    networks:
+      - sathishlogger-network
+
+  # Optional: Redis for caching (if needed in future)
+  redis:
+    image: redis:7-alpine
+    container_name: sathishlogger-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    restart: unless-stopped
+    networks:
+      - sathishlogger-network
+    profiles:
+      - with-redis
+
+volumes:
+  postgres_data:
+
+networks:
+  sathishlogger-network:
+    driver: bridge
