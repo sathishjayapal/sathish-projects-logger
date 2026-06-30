@@ -31,11 +31,10 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Expose port
 EXPOSE 8080
 
-# Environment variables with defaults
+# Non-sensitive defaults only — pass DATABASE_PASSWORD at runtime via docker-compose
 ENV SERVER_PORT=8080
 ENV DATABASE_URL=jdbc:h2:mem:sathishlogger
 ENV DATABASE_USERNAME=sa
-ENV DATABASE_PASSWORD=
 ENV JPA_DDL_AUTO=create-drop
 ENV LOG_LEVEL=INFO
 ENV STORAGE_TYPE=database
