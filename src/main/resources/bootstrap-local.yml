@@ -1,0 +1,14 @@
+spring:
+  cloud:
+    config:
+      uri: ${CONFIG_SERVER_URL}
+      username: ${SPRING_CLOUD_CONFIG_USERNAME}
+      password: ${SPRING_CLOUD_CONFIG_PASSWORD}
+      fail-fast: false
+      enabled: true
+
+# Local development settings
+logging:
+  level:
+    org.springframework.cloud.config: DEBUG
+    org.springframework.web: DEBUG
