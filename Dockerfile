@@ -16,8 +16,10 @@ WORKDIR /app
 # Create logs directory
 RUN mkdir -p /app/logs
 
-# Copy the built JAR
-COPY --from=builder /app/target/*.jar app.jar
+# Copy the built JAR — spring-boot-maven-plugin now repackages with the
+# "exec" classifier (see pom.xml) so target/ also contains a plain library
+# jar; match only the runnable one.
+COPY --from=builder /app/target/*-exec.jar app.jar
 
 # Create non-root user
 RUN addgroup --system sathish && adduser --system --group sathish

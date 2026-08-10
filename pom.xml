@@ -96,6 +96,32 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <!-- This artifact is both a standalone deployable service (this
+                     Dockerfile) and a library dependency for the SathishLoggerAppender
+                     class (consumed by eventstracker and others). Without a classifier,
+                     repackage overwrites the plain library jar with an executable one
+                     whose classes live under BOOT-INF/classes/ instead of the jar root —
+                     harmless when run standalone, but when that jar is nested inside
+                     another Spring Boot app's BOOT-INF/lib/, the outer app's classloader
+                     looks for classes at the nested jar's root and can't find them
+                     (ClassNotFoundException). The classifier keeps the default artifact
+                     a plain library jar and puts the runnable app in a separate
+                     -exec.jar (see Dockerfile and ci-cd.yml, which reference it). -->
+                <executions>
+                    <!-- Same id as spring-boot-starter-parent's inherited default
+                         execution, so this overrides it in place instead of running
+                         a second, unconfigured repackage that would still clobber
+                         the plain jar. -->
+                    <execution>
+                        <id>repackage</id>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>exec</classifier>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

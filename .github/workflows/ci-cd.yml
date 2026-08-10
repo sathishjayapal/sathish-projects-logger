@@ -31,10 +31,13 @@ jobs:
 
       # Guards against the spring-boot-maven-plugin repackage goal being
       # skipped/misconfigured, which silently produces a plain (non-executable)
-      # jar that fails at runtime with "no main manifest attribute".
+      # jar that fails at runtime with "no main manifest attribute". The
+      # repackage goal now uses the "exec" classifier (see pom.xml) so this
+      # artifact stays a plain library jar for consumers like eventstracker;
+      # target/*-exec.jar is unambiguously the runnable one.
       - name: Verify jar is executable (has Main-Class)
         run: |
-          JAR=$(ls target/*.jar | grep -v '\.original$' | head -n1)
+          JAR=$(ls target/*-exec.jar | head -n1)
           echo "Checking $JAR"
           if ! unzip -p "$JAR" META-INF/MANIFEST.MF | grep -q '^Main-Class:'; then
             echo "::error::$JAR has no Main-Class manifest entry — spring-boot-maven-plugin repackage did not run"
@@ -45,7 +48,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-jar
-          path: target/*.jar
+          path: target/*-exec.jar
           retention-days: 1
 
   # ── Docker Build & Push ───────────────────────────────────────────────────
