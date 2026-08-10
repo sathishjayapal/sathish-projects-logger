@@ -10,9 +10,6 @@ on:
 permissions:
   contents: read
 
-env:
-  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/sathishlogger
-
 jobs:
   # ── Build & Test ──────────────────────────────────────────────────────────
   build:
@@ -75,6 +72,23 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Compute the image name from a trimmed copy of the secret. A stray
+      # trailing newline/whitespace on the DOCKERHUB_USERNAME secret value
+      # (easy to introduce via copy-paste when setting it in GitHub) makes
+      # env.IMAGE_NAME embed a newline, which silently splits each `tags:`
+      # line in two and produces an invalid tag like "/sathishlogger:latest".
+      - name: Compute image name
+        id: image
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          trimmed="$(printf '%s' "$DOCKERHUB_USERNAME" | tr -d '[:space:]')"
+          if [ -z "$trimmed" ]; then
+            echo "::error::DOCKERHUB_USERNAME secret is empty"
+            exit 1
+          fi
+          echo "name=$trimmed/sathishlogger" >> "$GITHUB_OUTPUT"
+
       # Build and load into the local daemon only — do NOT push yet. The image
       # must pass the smoke test below before it's allowed anywhere near
       # Docker Hub / production.
@@ -85,9 +99,9 @@ jobs:
           push: false
           load: true
           tags: |
-            ${{ env.IMAGE_NAME }}:latest
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:latest
+            ${{ steps.image.outputs.name }}:latest
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ steps.image.outputs.name }}:latest
           cache-to: type=inline
 
       # Actually run the built image and hit its health endpoint. This is
@@ -97,7 +111,7 @@ jobs:
       - name: Smoke test container
         run: |
           set -e
-          docker run -d --name smoke-test -p 8099:8080 "${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          docker run -d --name smoke-test -p 8099:8080 "${{ steps.image.outputs.name }}:${{ github.sha }}"
 
           echo "Waiting for container to become healthy..."
           for i in $(seq 1 24); do
@@ -123,12 +137,12 @@ jobs:
 
       - name: Push image
         run: |
-          docker push "${{ env.IMAGE_NAME }}:latest"
-          docker push "${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          docker push "${{ steps.image.outputs.name }}:latest"
+          docker push "${{ steps.image.outputs.name }}:${{ github.sha }}"
 
       - name: Write summary
         run: |
           echo "## Docker Image Published" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Image**: \`${{ env.IMAGE_NAME }}:latest\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Image**: \`${{ steps.image.outputs.name }}:latest\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **SHA tag**: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Watchtower** will auto-redeploy in ≤ 5 min" >> "$GITHUB_STEP_SUMMARY"
