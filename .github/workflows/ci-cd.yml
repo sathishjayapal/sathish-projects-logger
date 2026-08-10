@@ -32,6 +32,18 @@ jobs:
       - name: Build (skip tests)
         run: mvn package -DskipTests -B
 
+      # Guards against the spring-boot-maven-plugin repackage goal being
+      # skipped/misconfigured, which silently produces a plain (non-executable)
+      # jar that fails at runtime with "no main manifest attribute".
+      - name: Verify jar is executable (has Main-Class)
+        run: |
+          JAR=$(ls target/*.jar | grep -v '\.original$' | head -n1)
+          echo "Checking $JAR"
+          if ! unzip -p "$JAR" META-INF/MANIFEST.MF | grep -q '^Main-Class:'; then
+            echo "::error::$JAR has no Main-Class manifest entry — spring-boot-maven-plugin repackage did not run"
+            exit 1
+          fi
+
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
         with:
@@ -63,16 +75,56 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push
+      # Build and load into the local daemon only — do NOT push yet. The image
+      # must pass the smoke test below before it's allowed anywhere near
+      # Docker Hub / production.
+      - name: Build image
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: true
+          push: false
+          load: true
           tags: |
             ${{ env.IMAGE_NAME }}:latest
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
           cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:latest
           cache-to: type=inline
+
+      # Actually run the built image and hit its health endpoint. This is
+      # what would have caught the "no main manifest attribute" crash-loop
+      # before it ever reached production — a jar/docker build succeeding is
+      # not the same as the app starting.
+      - name: Smoke test container
+        run: |
+          set -e
+          docker run -d --name smoke-test -p 8099:8080 "${{ env.IMAGE_NAME }}:${{ github.sha }}"
+
+          echo "Waiting for container to become healthy..."
+          for i in $(seq 1 24); do
+            if curl -sf http://localhost:8099/api/logs/health > /dev/null; then
+              echo "Health check passed"
+              exit 0
+            fi
+            if ! docker inspect -f '{{.State.Running}}' smoke-test | grep -q true; then
+              echo "::error::Container exited before becoming healthy"
+              docker logs smoke-test
+              exit 1
+            fi
+            sleep 5
+          done
+
+          echo "::error::Container did not become healthy in time"
+          docker logs smoke-test
+          exit 1
+
+      - name: Stop smoke test container
+        if: always()
+        run: docker rm -f smoke-test || true
+
+      - name: Push image
+        run: |
+          docker push "${{ env.IMAGE_NAME }}:latest"
+          docker push "${{ env.IMAGE_NAME }}:${{ github.sha }}"
 
       - name: Write summary
         run: |
