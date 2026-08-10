@@ -7,6 +7,13 @@ spring:
       start:
         skip: if_running
       lifecycle-management: none
+  flyway:
+    # Non-default location: this jar is also consumed as a library dependency
+    # (for SathishLoggerAppender) by other Spring Boot apps, e.g. eventstracker.
+    # Flyway's default "classpath:db/migration" scans every jar on the
+    # classpath, so keeping our migration there would collide with any
+    # consumer's own migrations of the same version number.
+    locations: classpath:db/sathishlogger-migration
 
 # Common defaults - environment-specific configs loaded from config server
 management:
