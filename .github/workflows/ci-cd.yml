@@ -138,10 +138,24 @@ jobs:
         if: always()
         run: docker rm -f smoke-test || true
 
-      - name: Push image
-        run: |
-          docker push "${{ steps.image.outputs.name }}:latest"
-          docker push "${{ steps.image.outputs.name }}:${{ github.sha }}"
+      # Re-build for publish, this time multi-arch (amd64 + arm64) and pushed
+      # straight to the registry. Buildx's docker-load exporter (used above for
+      # the smoke test) can't produce a multi-platform manifest list, so the
+      # tested single-arch image from "Build image" can't just be `docker push`ed
+      # as-is — it has to be rebuilt here via the registry exporter. The amd64
+      # layer is smoke-tested above; the arm64 leg is cross-built under QEMU and
+      # is NOT separately smoke-tested.
+      - name: Build and push (multi-arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ steps.image.outputs.name }}:latest
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ steps.image.outputs.name }}:latest
+          cache-to: type=inline
 
       - name: Write summary
         run: |
