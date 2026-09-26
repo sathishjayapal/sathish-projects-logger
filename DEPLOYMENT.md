@@ -307,7 +307,7 @@ services:
       - postgres
   
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16.15
     environment:
       - POSTGRES_DB=sathishlogger
       - POSTGRES_USER=sathish
