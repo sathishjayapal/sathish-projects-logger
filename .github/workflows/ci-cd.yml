@@ -138,13 +138,109 @@ jobs:
         if: always()
         run: docker rm -f smoke-test || true
 
-      # Re-build for publish, this time multi-arch (amd64 + arm64) and pushed
-      # straight to the registry. Buildx's docker-load exporter (used above for
-      # the smoke test) can't produce a multi-platform manifest list, so the
-      # tested single-arch image from "Build image" can't just be `docker push`ed
-      # as-is — it has to be rebuilt here via the registry exporter. The amd64
-      # layer is smoke-tested above; the arm64 leg is cross-built under QEMU and
-      # is NOT separately smoke-tested.
+  # ── Trivy Scan ───────────────────────────────────────────────────────────
+  scan:
+    name: Trivy Scan
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+          path: target/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute image name
+        id: image
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          trimmed="$(printf '%s' "$DOCKERHUB_USERNAME" | tr -d '[:space:]')"
+          if [ -z "$trimmed" ]; then
+            echo "::error::DOCKERHUB_USERNAME secret is empty"
+            exit 1
+          fi
+          echo "name=$trimmed/sathishlogger" >> "$GITHUB_OUTPUT"
+
+      # Build locally for scanning — the image is never pushed from this job
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: |
+            ${{ steps.image.outputs.name }}:latest
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ steps.image.outputs.name }}:latest
+          cache-to: type=inline
+
+      - name: Trivy vulnerability scan (CRITICAL severity only)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy image \
+            --severity CRITICAL \
+            --exit-code 1 \
+            --ignore-unfixed \
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+
+      - name: Trivy vulnerability report (all severities for transparency)
+        if: always()
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy image \
+            --format table \
+            --ignore-unfixed \
+            ${{ steps.image.outputs.name }}:${{ github.sha }} || true
+
+  # ── Publish ──────────────────────────────────────────────────────────────
+  publish:
+    name: Docker Publish
+    runs-on: ubuntu-latest
+    needs: [docker, scan]
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+          path: target/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute image name
+        id: image
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          trimmed="$(printf '%s' "$DOCKERHUB_USERNAME" | tr -d '[:space:]')"
+          if [ -z "$trimmed" ]; then
+            echo "::error::DOCKERHUB_USERNAME secret is empty"
+            exit 1
+          fi
+          echo "name=$trimmed/sathishlogger" >> "$GITHUB_OUTPUT"
+
+      # Multi-arch (amd64 + arm64) push straight to the registry. Buildx's
+      # docker-load exporter (used in the docker job for the smoke test) can't
+      # produce a multi-platform manifest list, so the image is rebuilt here
+      # via the registry exporter. The amd64 layer is smoke-tested and
+      # Trivy-scanned above; the arm64 leg is cross-built under QEMU and is
+      # NOT separately smoke-tested or scanned.
       - name: Build and push (multi-arch)
         uses: docker/build-push-action@v5
         with:
